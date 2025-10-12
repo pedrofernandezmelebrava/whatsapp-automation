@@ -1,20 +1,17 @@
 {
   "name": "whatsapp-local",
   "version": "1.0.0",
-  "description": "Servidor WhatsApp Web.js para envío automatizado de mensajes",
+  "description": "Servidor WhatsApp Web.js para Railway",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [],
-  "author": "Pedro Fernández Mele",
-  "license": "ISC",
   "dependencies": {
     "body-parser": "^2.2.0",
     "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.34.1",
-    "puppeteer": "^22.0.0"
+    "whatsapp-web.js": "^1.34.1"
   }
 }
