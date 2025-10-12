@@ -1,0 +1,15 @@
+﻿# Dependencias
+node_modules/
+.env
+package-lock.json
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Config locales
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
