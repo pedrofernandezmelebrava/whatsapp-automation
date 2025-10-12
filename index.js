@@ -1,15 +1,16 @@
 // =============================
-// ✅ Servidor WhatsApp Web.js estable para Railway
+// ✅ Servidor WhatsApp Web.js estable para Railway con auto-ping
 // =============================
 
 import express from "express";
 import bodyParser from "body-parser";
 import qrcode from "qrcode-terminal";
 import pkg from "whatsapp-web.js";
+import fetch from "node-fetch";
 const { Client, LocalAuth } = pkg;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -86,12 +87,25 @@ app.post("/send", async (req, res) => {
 });
 
 // =============================
-// 🚀 Inicia servidor
+// 🌐 Ruta base
 // =============================
 app.get("/", (req, res) => {
-  res.send("✅ Servidor WhatsApp activo en Railway");
+  res.send("✅ Servidor WhatsApp activo y estable en Railway");
 });
 
+// =============================
+// 🩵 Auto-ping para evitar apagado
+// =============================
+setInterval(() => {
+  const selfUrl = `https://whatsapp-automation-production-afb3.up.railway.app/`;
+  fetch(selfUrl)
+    .then(() => console.log("🔁 Auto-ping enviado para mantener activo"))
+    .catch(() => console.log("⚠️ Fallo en auto-ping (sin importancia)"));
+}, 4 * 60 * 1000); // cada 4 minutos
+
+// =============================
+// 🚀 Inicia servidor
+// =============================
 app.listen(PORT, () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
