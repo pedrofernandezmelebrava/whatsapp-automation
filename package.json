@@ -1,5 +1,5 @@
 {
-  "name": "whatsapp-local",
+  "name": "whatsapp-automation",
   "version": "1.0.0",
   "description": "Servidor WhatsApp Web.js para Railway",
   "type": "module",
@@ -10,7 +10,6 @@
   "dependencies": {
     "body-parser": "^2.2.0",
     "express": "^5.1.0",
-    "node-fetch": "^3.3.2",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.34.1"
   }
