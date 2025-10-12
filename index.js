@@ -1,7 +1,6 @@
 // =============================
-// ✅ Servidor WhatsApp Web.js estable para Railway con auto-ping
+// 🚀 Servidor WhatsApp en Railway (versión estable)
 // =============================
-
 import express from "express";
 import bodyParser from "body-parser";
 import qrcode from "qrcode-terminal";
@@ -18,12 +17,13 @@ app.use(bodyParser.urlencoded({ extended: true }));
 let clientReady = false;
 
 // =============================
-// 🤖 Inicializa el cliente
+// 🤖 Cliente WhatsApp
 // =============================
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
+    executablePath: "/usr/bin/google-chrome-stable", // <- usa el Chrome de Railway
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -52,34 +52,30 @@ client.on("disconnected", reason => {
   console.log("⚠️ Cliente desconectado:", reason);
 });
 
-try {
-  client.initialize();
-} catch (err) {
-  console.error("❌ Error inicializando WhatsApp:", err);
-}
+// Inicializamos sin bloquear Express
+client.initialize().catch(err =>
+  console.error("❌ Error inicializando WhatsApp:", err)
+);
 
 // =============================
-// 📡 Endpoint para enviar mensajes
+// 📡 Endpoint de envío
 // =============================
 app.post("/send", async (req, res) => {
-  if (!clientReady) {
-    return res.status(503).json({
-      status: "error",
-      message: "Cliente WhatsApp no está listo aún. Intenta en unos segundos.",
-    });
-  }
-
   try {
+    if (!clientReady)
+      return res
+        .status(503)
+        .json({ status: "error", message: "Cliente no está listo" });
+
     const { to, message } = req.body;
-    if (!to || !message) {
+    if (!to || !message)
       return res.status(400).json({ error: "Faltan parámetros: to, message" });
-    }
 
     const chatId = to.replace(/[^0-9]/g, "") + "@c.us";
-    const sentMsg = await client.sendMessage(chatId, message);
-    console.log(`📤 Enviado a ${to}: ${message}`);
+    const msg = await client.sendMessage(chatId, message);
+    console.log(`📤 Mensaje enviado a ${to}: ${message}`);
 
-    res.json({ status: "ok", to, message, id: sentMsg.id.id });
+    res.json({ status: "ok", id: msg.id.id, to, message });
   } catch (err) {
     console.error("❌ Error enviando mensaje:", err);
     res.status(500).json({ error: err.message });
@@ -87,21 +83,21 @@ app.post("/send", async (req, res) => {
 });
 
 // =============================
-// 🌐 Ruta base
+// 🌐 Ruta principal (Railway health check)
 // =============================
 app.get("/", (req, res) => {
-  res.send("✅ Servidor WhatsApp activo y estable en Railway");
+  res.status(200).send("✅ Servidor WhatsApp activo y respondiendo correctamente");
 });
 
 // =============================
-// 🩵 Auto-ping para evitar apagado
+// 🔁 Auto-ping para mantener activo
 // =============================
 setInterval(() => {
   const selfUrl = `https://whatsapp-automation-production-afb3.up.railway.app/`;
   fetch(selfUrl)
-    .then(() => console.log("🔁 Auto-ping enviado para mantener activo"))
-    .catch(() => console.log("⚠️ Fallo en auto-ping (sin importancia)"));
-}, 4 * 60 * 1000); // cada 4 minutos
+    .then(() => console.log("🔁 Auto-ping enviado"))
+    .catch(() => {});
+}, 4 * 60 * 1000);
 
 // =============================
 // 🚀 Inicia servidor
@@ -109,4 +105,3 @@ setInterval(() => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
-
