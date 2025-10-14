@@ -8,24 +8,24 @@ const app = express();
 app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 8080;
+let isReady = false;
 
-// Inicia cliente de WhatsApp con autenticación local
+// --- Inicializa el cliente de WhatsApp ---
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
+    headless: true,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-extensions",
       "--disable-gpu",
+      "--single-process",
       "--no-zygote",
-      "--single-process"
     ],
-    headless: true,
   },
 });
-
-let isReady = false;
 
 client.on("qr", (qr) => {
   console.log("📱 Escanea este QR para vincular tu cuenta:");
@@ -33,45 +33,56 @@ client.on("qr", (qr) => {
 });
 
 client.on("ready", () => {
-  console.log("✅ Cliente WhatsApp conectado y listo en Railway");
+  console.log("✅ Cliente WhatsApp conectado y listo");
   isReady = true;
+});
+
+client.on("disconnected", (reason) => {
+  console.log("⚠️ Cliente desconectado:", reason);
+  isReady = false;
+  client.initialize();
 });
 
 client.on("message", (msg) => {
   console.log(`💬 Mensaje recibido de ${msg.from}: ${msg.body}`);
 });
 
-client.initialize();
-
-// Endpoint raíz
-app.get("/", (req, res) => {
-  res.status(200).send("✅ Servidor WhatsApp Web.js en Railway funcionando correctamente.");
+client.initialize().catch((err) => {
+  console.error("❌ Error al iniciar el cliente:", err);
 });
 
-// Endpoint para enviar mensajes
+// --- Rutas HTTP ---
+app.get("/", (req, res) => {
+  res.status(200).json({ status: "ok", message: "Servidor WhatsApp activo 🚀" });
+});
+
 app.post("/send", async (req, res) => {
   try {
     const { to, message } = req.body;
+
     if (!to || !message) {
       return res.status(400).json({ error: "Faltan parámetros: to, message" });
     }
 
     if (!isReady) {
-      return res.status(503).json({ error: "Cliente de WhatsApp no está listo aún." });
+      return res.status(503).json({ error: "El cliente de WhatsApp no está listo aún." });
     }
 
     const chatId = to.replace("+", "") + "@c.us";
     await client.sendMessage(chatId, message);
-
     console.log(`📤 Mensaje enviado a ${chatId}: ${message}`);
-    res.json({ success: true, to, message });
-  } catch (error) {
-    console.error("❌ Error en /send:", error);
-    res.status(500).json({ error: error.message });
+    res.json({ status: "ok", to, message });
+  } catch (err) {
+    console.error("❌ Error en /send:", err);
+    res.status(500).json({ error: err.message });
   }
+});
+
+// --- Evita que Railway mate el proceso por inactividad ---
+app.get("/keepalive", (req, res) => {
+  res.send("✅ Keep-alive OK");
 });
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
-
