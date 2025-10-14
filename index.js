@@ -1,88 +1,73 @@
 import express from "express";
 import bodyParser from "body-parser";
-import qrcode from "qrcode-terminal";
 import pkg from "whatsapp-web.js";
-const { Client, LocalAuth } = pkg;
+import qrcode from "qrcode";
 
+const { Client, LocalAuth } = pkg;
 const app = express();
 app.use(bodyParser.json());
 
-const PORT = process.env.PORT || 8080;
-let isReady = false;
+let qrCodeImage = null;
 
-// --- Inicializa el cliente de WhatsApp ---
+// Inicializar cliente WhatsApp
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-extensions",
-      "--disable-gpu",
-      "--single-process",
-      "--no-zygote",
-    ],
-  },
-});
-
-client.on("qr", (qr) => {
-  console.log("📱 Escanea este QR para vincular tu cuenta:");
-  qrcode.generate(qr, { small: true });
-});
-
-client.on("ready", () => {
-  console.log("✅ Cliente WhatsApp conectado y listo");
-  isReady = true;
-});
-
-client.on("disconnected", (reason) => {
-  console.log("⚠️ Cliente desconectado:", reason);
-  isReady = false;
-  client.initialize();
-});
-
-client.on("message", (msg) => {
-  console.log(`💬 Mensaje recibido de ${msg.from}: ${msg.body}`);
-});
-
-client.initialize().catch((err) => {
-  console.error("❌ Error al iniciar el cliente:", err);
-});
-
-// --- Rutas HTTP ---
-app.get("/", (req, res) => {
-  res.status(200).json({ status: "ok", message: "Servidor WhatsApp activo 🚀" });
-});
-
-app.post("/send", async (req, res) => {
-  try {
-    const { to, message } = req.body;
-
-    if (!to || !message) {
-      return res.status(400).json({ error: "Faltan parámetros: to, message" });
-    }
-
-    if (!isReady) {
-      return res.status(503).json({ error: "El cliente de WhatsApp no está listo aún." });
-    }
-
-    const chatId = to.replace("+", "") + "@c.us";
-    await client.sendMessage(chatId, message);
-    console.log(`📤 Mensaje enviado a ${chatId}: ${message}`);
-    res.json({ status: "ok", to, message });
-  } catch (err) {
-    console.error("❌ Error en /send:", err);
-    res.status(500).json({ error: err.message });
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true
   }
 });
 
-// --- Evita que Railway mate el proceso por inactividad ---
-app.get("/keepalive", (req, res) => {
-  res.send("✅ Keep-alive OK");
+// Evento QR → genera imagen accesible por web
+client.on("qr", async (qr) => {
+  console.log("📱 Escanea este QR para vincular tu cuenta:");
+  qrCodeImage = await qrcode.toDataURL(qr);
 });
 
+// Cuando el cliente se conecta
+client.on("ready", () => {
+  console.log("✅ Cliente WhatsApp conectado y listo en Railway");
+  qrCodeImage = null; // QR ya no es necesario
+});
+
+// Endpoint raíz → muestra QR si está disponible
+app.get("/", (req, res) => {
+  if (qrCodeImage) {
+    res.send(`
+      <h1>Escanea este código QR con WhatsApp Business</h1>
+      <img src="${qrCodeImage}" alt="QR WhatsApp" />
+    `);
+  } else {
+    res.send("✅ Cliente conectado o QR no disponible todavía.");
+  }
+});
+
+// Endpoint para enviar mensaje
+app.post("/send", async (req, res) => {
+  try {
+    const { to, message } = req.body;
+    if (!to || !message)
+      return res.status(400).json({ error: "Faltan parámetros: to, message" });
+
+    const chatId = to.replace("+", "") + "@c.us";
+    const sentMessage = await client.sendMessage(chatId, message);
+
+    res.json({
+      status: "ok",
+      to,
+      message,
+      id: sentMessage.id.id
+    });
+  } catch (error) {
+    console.error("❌ Error enviando mensaje:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Iniciar servidor
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
+
+client.initialize();
