@@ -56,17 +56,30 @@ app.get("/qr", async (req, res) => {
   }
 });
 
-// --- NUEVO: endpoint /send ---
+// --- NUEVO /send con validación y formato correcto ---
 app.post("/send", async (req, res) => {
-  const { to, message } = req.body;
+  let { to, message } = req.body;
 
   if (!to || !message) {
     return res.status(400).json({ error: "Faltan parámetros: to, message" });
   }
 
   try {
+    // Limpia número: elimina espacios y signos, y asegúrate que tenga @c.us
+    to = to.replace(/\D/g, "");
+    if (!to.endsWith("@c.us")) to = `${to}@c.us`;
+
+    // Verifica que el cliente esté listo
+    if (!client.info || !client.info.wid) {
+      console.warn("⚠️ Cliente aún no está listo para enviar mensajes.");
+      return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
+    }
+
     console.log(`📩 Enviando mensaje a ${to}: ${message}`);
+
     const result = await client.sendMessage(to, message);
+
+    console.log(`✅ Mensaje enviado correctamente a ${to}`);
     res.json({
       status: "ok",
       to,
