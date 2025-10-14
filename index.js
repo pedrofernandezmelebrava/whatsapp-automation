@@ -4,7 +4,7 @@ import qrcode from "qrcode";
 
 const { Client, LocalAuth } = pkg;
 
-// --- Configuración de WhatsApp-Web.js ---
+// --- Inicializamos cliente WhatsApp ---
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
@@ -26,32 +26,27 @@ const client = new Client({
   },
 });
 
-// --- Generación de QR ---
+// --- Estado del QR ---
 let lastQR = null;
 client.on("qr", async (qr) => {
   lastQR = qr;
   console.log("📱 Escanea este QR para vincular tu cuenta:");
 });
-
-// --- Conexión exitosa ---
-client.on("ready", () => {
-  console.log("✅ Cliente WhatsApp conectado y listo en Railway");
-});
-
-// --- Errores ---
+client.on("ready", () => console.log("✅ Cliente WhatsApp conectado y listo en Railway"));
 client.on("auth_failure", msg => console.error("❌ Fallo de autenticación:", msg));
 client.on("disconnected", reason => console.warn("⚠️ Cliente desconectado:", reason));
-
-// --- Inicializar cliente ---
-client.initialize().catch(err => {
-  console.error("❌ Error al iniciar el cliente:", err);
-});
+client.initialize().catch(err => console.error("❌ Error al iniciar el cliente:", err));
 
 // --- Servidor Express ---
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.get("/", (req, res) => res.send("✅ Servidor WhatsApp activo."));
+app.use(express.json());
+
+// Página principal
+app.get("/", (req, res) => res.send("✅ Servidor WhatsApp activo en Railway."));
+
+// QR visible desde navegador
 app.get("/qr", async (req, res) => {
   if (lastQR) {
     const qrImage = await qrcode.toDataURL(lastQR);
@@ -60,7 +55,30 @@ app.get("/qr", async (req, res) => {
     res.send("Esperando QR...");
   }
 });
+
+// --- NUEVO: endpoint /send ---
+app.post("/send", async (req, res) => {
+  const { to, message } = req.body;
+
+  if (!to || !message) {
+    return res.status(400).json({ error: "Faltan parámetros: to, message" });
+  }
+
+  try {
+    console.log(`📩 Enviando mensaje a ${to}: ${message}`);
+    const result = await client.sendMessage(to, message);
+    res.json({
+      status: "ok",
+      to,
+      message,
+      id: result.id.id,
+    });
+  } catch (err) {
+    console.error("❌ Error enviando mensaje:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
-
