@@ -13,8 +13,9 @@ RUN npm install --omit=dev
 # Copiamos el resto del código
 COPY . .
 
-# Exponemos el puerto 8080 (Railway usa este)
+# Exponemos explícitamente el puerto 8080
 EXPOSE 8080
 
-# Comando de inicio con puerto dinámico
-CMD ["sh", "-c", "node index.js --port=${PORT:-8080}"]
+# Comando de inicio
+CMD ["npm", "start"]
+
