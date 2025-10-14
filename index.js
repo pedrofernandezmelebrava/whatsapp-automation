@@ -12,14 +12,30 @@ const PORT = process.env.PORT || 8080;
 let lastQR = null; // guardará el último QR generado
 
 // --- Configuración de WhatsApp-Web.js ---
+// --- Configuración de WhatsApp-Web.js ---
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-extensions",
+      "--single-process"
+    ],
     headless: true,
   },
+  webVersionCache: {
+    type: "remote",
+    remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html",
+  },
 });
+
+// 🔧 Este hack fuerza un User-Agent realista para evitar bloqueos de WhatsApp Business
+client.pupBrowser?.userAgent = async () =>
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 client.on("qr", async (qr) => {
   console.log("📱 Escanea este QR para vincular tu cuenta:");
