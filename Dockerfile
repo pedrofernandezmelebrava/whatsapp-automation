@@ -16,5 +16,5 @@ COPY . .
 # Exponemos el puerto 8080 (Railway usa este)
 EXPOSE 8080
 
-# Comando de inicio
-CMD ["npm", "start"]
+# Comando de inicio con puerto dinámico
+CMD ["sh", "-c", "node index.js --port=${PORT:-8080}"]
