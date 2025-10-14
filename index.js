@@ -2,7 +2,8 @@
 import express from "express";
 import bodyParser from "body-parser";
 import qrcode from "qrcode";
-import { Client, LocalAuth } from "whatsapp-web.js";
+import pkg from "whatsapp-web.js";
+const { Client, LocalAuth } = pkg;
 
 const app = express();
 app.use(bodyParser.json());
