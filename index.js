@@ -1,10 +1,11 @@
 import express from "express";
 const app = express();
 
-const PORT = process.env.PORT; // sin fallback
+// Usa exclusivamente el puerto que Railway asigna
+const PORT = process.env.PORT;
 
 app.get("/", (req, res) => {
-  res.send("✅ Servidor Express activo y respondiendo correctamente.");
+  res.send("✅ Servidor Express activo en Railway y respondiendo correctamente.");
 });
 
 app.get("/ping", (req, res) => {
@@ -14,4 +15,5 @@ app.get("/ping", (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Express escuchando en puerto ${PORT}`);
 });
+
 
