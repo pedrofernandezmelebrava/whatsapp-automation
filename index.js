@@ -21,7 +21,12 @@ const client = new Client({
 // Evento QR → genera imagen accesible por web
 client.on("qr", async (qr) => {
   console.log("📱 Escanea este QR para vincular tu cuenta:");
-  qrCodeImage = await qrcode.toDataURL(qr);
+  try {
+    qrCodeImage = await qrcode.toDataURL(qr);
+    console.log("✅ QR generado y disponible en / (abre tu URL en el navegador)");
+  } catch (err) {
+    console.error("❌ Error generando imagen del QR:", err);
+  }
 });
 
 // Cuando el cliente se conecta
