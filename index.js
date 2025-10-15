@@ -56,6 +56,16 @@ app.get("/qr", async (req, res) => {
   }
 });
 
+// 🔐 Middleware simple de autenticación por clave
+app.use((req, res, next) => {
+  const apiKey = req.headers["x-api-key"];
+  if (!apiKey || apiKey !== process.env.API_KEY) {
+    return res.status(401).json({ error: "Acceso no autorizado: clave API inválida" });
+  }
+  next();
+});
+
+
 // --- NUEVO /send con validación y formato correcto ---
 app.post("/send", async (req, res) => {
   let { to, message } = req.body;
