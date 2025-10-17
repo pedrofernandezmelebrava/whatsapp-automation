@@ -32,22 +32,7 @@ client.on("qr", async (qr) => {
   lastQR = qr;
   console.log("📱 Escanea este QR para vincular tu cuenta:");
 });
-client.on("ready", async () => {
-  console.log("✅ Cliente WhatsApp conectado y listo en Railway");
-
-  // 👇 --- BLOQUE TEMPORAL: LISTAR GRUPOS ---
-  try {
-    const chats = await client.getChats();
-    const groups = chats.filter(c => c.isGroup);
-    console.log("==== LISTA DE GRUPOS DISPONIBLES ====");
-    groups.forEach(g => console.log(`${g.name} → ${g.id._serialized}`));
-    console.log("=====================================");
-  } catch (err) {
-    console.error("❌ Error al obtener grupos:", err);
-  }
-  // 👆 --- FIN BLOQUE TEMPORAL ---
-});
-
+client.on("ready", () => console.log("✅ Cliente WhatsApp conectado y listo en Railway"));
 client.on("auth_failure", msg => console.error("❌ Fallo de autenticación:", msg));
 client.on("disconnected", reason => console.warn("⚠️ Cliente desconectado:", reason));
 client.initialize().catch(err => console.error("❌ Error al iniciar el cliente:", err));
