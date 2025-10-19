@@ -62,7 +62,7 @@ app.get("/qr", async (req, res) => {
   }
 });
 
-// 🔐 Middleware simple de autenticación por clave
+// 🔐 Middleware de autenticación por API key
 app.use((req, res, next) => {
   const apiKey = req.headers["x-api-key"];
   if (!apiKey || apiKey !== process.env.API_KEY) {
@@ -71,44 +71,40 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Endpoint principal de envío ---
+// --- Endpoint principal /send ---
 app.post("/send", async (req, res) => {
   let { to, message } = req.body;
-
   if (!to || !message) {
     return res.status(400).json({ error: "Faltan parámetros: to, message" });
   }
 
   try {
-    // 🧩 Normalización correcta del número o ID de grupo
-    // Si ya es un ID válido, no tocarlo
-    if (!/@(c|g)\.us$/.test(to)) {
-      // Elimina solo espacios y guiones, pero conserva el "+"
-      let clean = to.replace(/[\s\-]/g, "");
+    // 🧩 Normalización estricta
+    // - Si ya es @c.us o @g.us, no tocar
+    // - Si empieza por "+", validar formato E.164
+    // - En caso contrario, rechazar
 
-      // ✅ Si comienza con "+", conserva el prefijo internacional (no lo borra)
-      if (clean.startsWith("+")) {
-        // Elimina solo el "+" antes de agregar el dominio
-        clean = clean.substring(1);
+    if (!/@(c|g)\.us$/i.test(to)) {
+      const clean = String(to).trim();
+
+      // Validación E.164 (ej: +34695706336)
+      const e164 = /^\+[1-9]\d{6,14}$/;
+      if (!e164.test(clean)) {
+        return res.status(400).json({
+          error: "Formato de número inválido. Usa formato E.164, por ejemplo: +34695706336",
+        });
       }
 
-      // Si no tiene prefijo + ni dominio, asume prefijo 34 (España)
-      if (!clean.startsWith("34")) {
-        console.warn(`⚠️ Número sin prefijo internacional detectado (${clean}), se añade +34`);
-        clean = "34" + clean;
-      }
-
-      to = `${clean}@c.us`;
+      // Convertir +34695706336 -> 34695706336@c.us
+      to = `${clean.slice(1)}@c.us`;
     }
 
-    // Verifica que el cliente esté listo
     if (!client.info || !client.info.wid) {
       console.warn("⚠️ Cliente aún no está listo para enviar mensajes.");
       return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
     }
 
     console.log(`📩 Enviando mensaje a ${to}: ${message}`);
-
     const result = await client.sendMessage(to, message);
 
     console.log(`✅ Mensaje enviado correctamente a ${to}`);
@@ -128,4 +124,3 @@ app.post("/send", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
-
