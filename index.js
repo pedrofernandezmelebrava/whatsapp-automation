@@ -38,7 +38,7 @@ client.on("qr", async (qr) => {
 
 client.on("ready", () => console.log("✅ Cliente WhatsApp conectado y listo en Railway"));
 client.on("auth_failure", msg => console.error("❌ Fallo de autenticación:", msg));
-client.on("disconnected", reason => console.warn(⚠️ Cliente desconectado:", reason));
+client.on("disconnected", reason => console.warn("⚠️ Cliente desconectado:", reason));
 
 client.initialize().catch(err => console.error("❌ Error al iniciar el cliente:", err));
 
