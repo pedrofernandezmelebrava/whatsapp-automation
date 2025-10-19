@@ -31,6 +31,7 @@ const client = new Client({
 
 // --- Estado del QR ---
 let lastQR = null;
+
 client.on("qr", async (qr) => {
   lastQR = qr;
   console.log("📱 Escanea este QR para vincular tu cuenta:");
@@ -79,19 +80,25 @@ app.post("/send", async (req, res) => {
   }
 
   try {
-    // 🔧 Formateo robusto de número o ID de grupo
+    // 🧩 Normalización correcta del número o ID de grupo
+    // Si ya es un ID válido, no tocarlo
     if (!/@(c|g)\.us$/.test(to)) {
-      // Elimina espacios y guiones, pero conserva el signo "+"
-      const clean = to.replace(/[\s\-]/g, "");
+      // Elimina solo espacios y guiones, pero conserva el "+"
+      let clean = to.replace(/[\s\-]/g, "");
 
-      // Si comienza con "+", conserva el código completo (por ejemplo, +34...)
-      // y quita solo el "+" para formar el ID
+      // ✅ Si comienza con "+", conserva el prefijo internacional (no lo borra)
       if (clean.startsWith("+")) {
-        to = clean.slice(1) + "@c.us";
-      } else {
-        // Si no tiene "+", se asume que ya incluye el código internacional
-        to = clean + "@c.us";
+        // Elimina solo el "+" antes de agregar el dominio
+        clean = clean.substring(1);
       }
+
+      // Si no tiene prefijo + ni dominio, asume prefijo 34 (España)
+      if (!clean.startsWith("34")) {
+        console.warn(`⚠️ Número sin prefijo internacional detectado (${clean}), se añade +34`);
+        clean = "34" + clean;
+      }
+
+      to = `${clean}@c.us`;
     }
 
     // Verifica que el cliente esté listo
