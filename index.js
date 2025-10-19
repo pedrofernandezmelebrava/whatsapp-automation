@@ -8,21 +8,26 @@ const { Client, LocalAuth } = pkg;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-  executablePath: '/usr/bin/chromium', // si en logs falla, cambia a '/usr/bin/google-chrome-stable'
-  args: [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-    "--no-zygote",
-    "--disable-software-rasterizer",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding",
-    "--single-process"
-  ],
-  headless: true,
-},
+    executablePath: '/usr/bin/chromium', // si en logs falla, cambia a '/usr/bin/google-chrome-stable'
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--disable-software-rasterizer",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
+      "--single-process"
+    ],
+    headless: true,
+  },
+  webVersionCache: {
+    type: "remote",
+    remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html",
+  },
+}); // 👈 ESTA LÍNEA CIERRA BIEN EL BLOQUE
 
 // --- Estado del QR ---
 let lastQR = null;
