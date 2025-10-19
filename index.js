@@ -8,7 +8,7 @@ const { Client, LocalAuth } = pkg;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    executablePath: '/usr/bin/chromium', // si en logs falla, cambia a '/usr/bin/google-chrome-stable'
+    executablePath: '/usr/bin/chromium', // Si falla, cambiar a '/usr/bin/google-chrome-stable'
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -27,7 +27,7 @@ const client = new Client({
     type: "remote",
     remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html",
   },
-}); // 👈 ESTA LÍNEA CIERRA BIEN EL BLOQUE
+});
 
 // --- Estado del QR ---
 let lastQR = null;
@@ -35,9 +35,11 @@ client.on("qr", async (qr) => {
   lastQR = qr;
   console.log("📱 Escanea este QR para vincular tu cuenta:");
 });
+
 client.on("ready", () => console.log("✅ Cliente WhatsApp conectado y listo en Railway"));
 client.on("auth_failure", msg => console.error("❌ Fallo de autenticación:", msg));
-client.on("disconnected", reason => console.warn("⚠️ Cliente desconectado:", reason));
+client.on("disconnected", reason => console.warn(⚠️ Cliente desconectado:", reason));
+
 client.initialize().catch(err => console.error("❌ Error al iniciar el cliente:", err));
 
 // --- Servidor Express ---
@@ -68,8 +70,7 @@ app.use((req, res, next) => {
   next();
 });
 
-
-// --- NUEVO /send con validación y formato correcto ---
+// --- Endpoint principal de envío ---
 app.post("/send", async (req, res) => {
   let { to, message } = req.body;
 
@@ -78,9 +79,20 @@ app.post("/send", async (req, res) => {
   }
 
   try {
-    // Limpia número: elimina espacios y signos, y asegúrate que tenga @c.us
-    to = to.replace(/\D/g, "");
-    if (!to.endsWith("@c.us")) to = `${to}@c.us`;
+    // 🔧 Formateo robusto de número o ID de grupo
+    if (!/@(c|g)\.us$/.test(to)) {
+      // Elimina espacios y guiones, pero conserva el signo "+"
+      const clean = to.replace(/[\s\-]/g, "");
+
+      // Si comienza con "+", conserva el código completo (por ejemplo, +34...)
+      // y quita solo el "+" para formar el ID
+      if (clean.startsWith("+")) {
+        to = clean.slice(1) + "@c.us";
+      } else {
+        // Si no tiene "+", se asume que ya incluye el código internacional
+        to = clean + "@c.us";
+      }
+    }
 
     // Verifica que el cliente esté listo
     if (!client.info || !client.info.wid) {
@@ -99,6 +111,7 @@ app.post("/send", async (req, res) => {
       message,
       id: result.id.id,
     });
+
   } catch (err) {
     console.error("❌ Error enviando mensaje:", err);
     res.status(500).json({ error: err.message });
@@ -108,3 +121,4 @@ app.post("/send", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
+
