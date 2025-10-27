@@ -80,22 +80,14 @@ app.post("/send", async (req, res) => {
 
   try {
     // 🧩 Normalización estricta
-    // - Si ya es @c.us o @g.us, no tocar
-    // - Si empieza por "+", validar formato E.164
-    // - En caso contrario, rechazar
-
     if (!/@(c|g)\.us$/i.test(to)) {
       const clean = String(to).trim();
-
-      // Validación E.164 (ej: +34695706336)
       const e164 = /^\+[1-9]\d{6,14}$/;
       if (!e164.test(clean)) {
         return res.status(400).json({
           error: "Formato de número inválido. Usa formato E.164, por ejemplo: +34695706336",
         });
       }
-
-      // Convertir +34695706336 -> 34695706336@c.us
       to = `${clean.slice(1)}@c.us`;
     }
 
@@ -121,6 +113,58 @@ app.post("/send", async (req, res) => {
   }
 });
 
+// --- NUEVO: Endpoint /sync-group para guardar ID del grupo en Sheets ---
+app.post("/sync-group", async (req, res) => {
+  const { property, groupName } = req.body;
+  if (!property || !groupName) {
+    return res.status(400).json({ error: "Faltan parámetros: property, groupName" });
+  }
+
+  try {
+    if (!client || !client.info || !client.info.wid) {
+      return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
+    }
+
+    console.log(`🔍 Buscando grupo: ${groupName}`);
+    const chats = await client.getChats();
+    const group = chats.find(c => c.isGroup && c.name.trim() === groupName.trim());
+
+    if (!group) {
+      return res.status(404).json({ error: `Grupo no encontrado: ${groupName}` });
+    }
+
+    const groupId = group.id._serialized;
+    console.log(`✅ Grupo encontrado: ${groupName} → ${groupId}`);
+
+    // === Llamada al Apps Script ===
+    const webAppUrl = "https://script.google.com/macros/s/AKfycbymossFhCG3A2tSkGE8Vxz4HZjoIX9q86ruf0WIHsLPOkHKQvIpex24tf0zx2zUwpbSbA/exec";
+    const token = process.env.GROUP_SAVE_TOKEN; // define esta variable en Railway
+    const params = new URLSearchParams({
+      action: "saveGroupId",
+      token,
+      property,
+      groupName,
+      groupId
+    });
+
+    const response = await fetch(`${webAppUrl}?${params.toString()}`);
+    const data = await response.json();
+
+    if (!data.ok) {
+      console.error("❌ Error guardando en Sheets:", data.error);
+      return res.status(500).json({ error: data.error });
+    }
+
+    console.log(`💾 Guardado correctamente en hoja de ${property} (fila ${data.row})`);
+    res.json({ status: "ok", property, groupName, groupId });
+
+  } catch (err) {
+    console.error("❌ Error en /sync-group:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
+
