@@ -8,7 +8,7 @@ const { Client, LocalAuth } = pkg;
 const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
-    executablePath: '/usr/bin/chromium', // Si falla, cambiar a '/usr/bin/google-chrome-stable'
+    executablePath: "/usr/bin/chromium",
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -25,7 +25,8 @@ const client = new Client({
   },
   webVersionCache: {
     type: "remote",
-    remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html",
+    remotePath:
+      "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2410.1.html",
   },
 });
 
@@ -37,11 +38,15 @@ client.on("qr", async (qr) => {
   console.log("📱 Escanea este QR para vincular tu cuenta:");
 });
 
-client.on("ready", () => console.log("✅ Cliente WhatsApp conectado y listo en Railway"));
-client.on("auth_failure", msg => console.error("❌ Fallo de autenticación:", msg));
-client.on("disconnected", reason => console.warn("⚠️ Cliente desconectado:", reason));
+client.on("ready", () =>
+  console.log("✅ Cliente WhatsApp conectado y listo en Railway")
+);
+client.on("auth_failure", (msg) => console.error("❌ Fallo de autenticación:", msg));
+client.on("disconnected", (reason) => console.warn("⚠️ Cliente desconectado:", reason));
 
-client.initialize().catch(err => console.error("❌ Error al iniciar el cliente:", err));
+client.initialize().catch((err) =>
+  console.error("❌ Error al iniciar el cliente:", err)
+);
 
 // --- Servidor Express ---
 const app = express();
@@ -106,63 +111,128 @@ app.post("/send", async (req, res) => {
       message,
       id: result.id.id,
     });
-
   } catch (err) {
     console.error("❌ Error enviando mensaje:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// --- NUEVO: Endpoint /sync-group para guardar ID del grupo en Sheets ---
+// --- NUEVO ENDPOINT: Buscar grupo por nombre ---
 app.post("/sync-group", async (req, res) => {
-  const { property, groupName } = req.body;
-  if (!property || !groupName) {
-    return res.status(400).json({ error: "Faltan parámetros: property, groupName" });
+  const { groupName } = req.body;
+
+  if (!groupName || typeof groupName !== "string") {
+    return res.status(400).json({ error: "Falta el parámetro groupName (texto)" });
   }
 
   try {
+    if (!client.info || !client.info.wid) {
+      return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
+    }
+
+    console.log(`🔍 Buscando grupo con nombre exacto: "${groupName}"`);
+    const chats = await client.getChats();
+    const groups = chats.filter((c) => c.isGroup);
+    const match = groups.find(
+      (g) => g.name.trim().toLowerCase() === groupName.trim().toLowerCase()
+    );
+
+    if (match) {
+      console.log(`✅ Grupo encontrado: ${match.name} → ${match.id._serialized}`);
+      return res.json({
+        status: "ok",
+        id: match.id._serialized,
+        name: match.name,
+      });
+    } else {
+      console.log("⚠️ No se encontró ningún grupo con ese nombre.");
+      return res.status(404).json({ error: "Grupo no encontrado" });
+    }
+  } catch (err) {
+    console.error("❌ Error buscando grupo:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- Util: normalizar números a WIDs ---
+function toWid(idLike) {
+  // ya viene como @c.us o @g.us -> lo dejamos tal cual
+  if (/@(c|g)\.us$/i.test(idLike)) return idLike.trim();
+  // E.164 +XXXXXXXX -> convertimos a 34...@c.us
+  const clean = String(idLike || "").trim();
+  const e164 = /^\+[1-9]\d{6,14}$/;
+  if (!e164.test(clean)) {
+    throw new Error(`Número inválido (usa E.164): ${idLike}`);
+  }
+  return `${clean.slice(1)}@c.us`;
+}
+
+// --- Endpoint: crear grupo ---
+app.post("/create-group", async (req, res) => {
+  try {
+    const { groupTitle, participants, initialMessage } = req.body || {};
+
+    if (!groupTitle || typeof groupTitle !== "string" || !groupTitle.trim()) {
+      return res.status(400).json({ error: "Falta groupTitle" });
+    }
+    if (!Array.isArray(participants) || participants.length < 2) {
+      return res.status(400).json({ error: "Se requieren al menos 2 participantes" });
+    }
+
+    // Cliente listo
     if (!client || !client.info || !client.info.wid) {
       return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
     }
 
-    console.log(`🔍 Buscando grupo: ${groupName}`);
-    const chats = await client.getChats();
-    const group = chats.find(c => c.isGroup && c.name.trim() === groupName.trim());
-
-    if (!group) {
-      return res.status(404).json({ error: `Grupo no encontrado: ${groupName}` });
+    // Normalizar participantes a WID de WhatsApp
+    let wids;
+    try {
+      wids = participants.map(toWid);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
     }
 
-    const groupId = group.id._serialized;
-    console.log(`✅ Grupo encontrado: ${groupName} → ${groupId}`);
+    console.log("🧪 Solicitud de creación de grupo:");
+    console.log("   • Título:", groupTitle);
+    console.log("   • Participantes:", wids.join(", "));
 
-    // === Llamada al Apps Script ===
-    const webAppUrl = "https://script.google.com/macros/s/AKfycbymossFhCG3A2tSkGE8Vxz4HZjoIX9q86ruf0WIHsLPOkHKQvIpex24tf0zx2zUwpbSbA/exec";
-    const token = process.env.GROUP_SAVE_TOKEN; // define esta variable en Railway
-    const params = new URLSearchParams({
-      action: "saveGroupId",
-      token,
-      property,
-      groupName,
-      groupId
+    // Crear grupo
+    const chat = await client.createGroup(groupTitle.trim(), wids);
+
+    // Algunas versiones devuelven obj distinto; cubrimos ambos casos
+    const groupId =
+      (chat && chat.gid && chat.gid._serialized) ||
+      (chat && chat.id && chat.id._serialized) ||
+      (chat && chat.id && chat.id.id) ||
+      null;
+
+    const groupName = (chat && (chat.subject || chat.name)) || groupTitle.trim();
+
+    console.log(`✅ Grupo creado: ${groupName} → ${groupId}`);
+
+    // Mensaje inicial opcional
+    if (initialMessage && groupId) {
+      try {
+        await client.sendMessage(groupId, String(initialMessage));
+        console.log("✉️ Mensaje inicial enviado al grupo");
+      } catch (e) {
+        console.warn("⚠️ No se pudo enviar el mensaje inicial:", e.message);
+      }
+    }
+
+    return res.json({
+      status: "ok",
+      id: groupId,
+      name: groupName,
+      participants: wids,
     });
-
-    const response = await fetch(`${webAppUrl}?${params.toString()}`);
-    const data = await response.json();
-
-    if (!data.ok) {
-      console.error("❌ Error guardando en Sheets:", data.error);
-      return res.status(500).json({ error: data.error });
-    }
-
-    console.log(`💾 Guardado correctamente en hoja de ${property} (fila ${data.row})`);
-    res.json({ status: "ok", property, groupName, groupId });
-
   } catch (err) {
-    console.error("❌ Error en /sync-group:", err);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Error en /create-group:", err);
+    return res.status(500).json({ error: err.message || "Error creando grupo" });
   }
 });
+
+
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
