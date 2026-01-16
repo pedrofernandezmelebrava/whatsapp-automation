@@ -126,7 +126,12 @@ client.on("disconnected", (reason) => {
   isReady = false;
   console.warn("⚠️ DISCONNECTED:", reason);
 
-  // 🔁 Auto-reconnect suave (sin bucle agresivo)
+  // Si hay QR pendiente, NO reinicializamos en bucle.
+  if (lastQR) {
+    console.warn("⚠️ Hay un QR pendiente. No re-inicializo para evitar bucle.");
+    return;
+  }
+
   setTimeout(async () => {
     try {
       console.log("🔁 Intentando re-inicializar tras desconexión...");
@@ -134,8 +139,9 @@ client.on("disconnected", (reason) => {
     } catch (e) {
       console.warn("⚠️ Re-initialize falló:", e?.message || e);
     }
-  }, 15000); // 15 segundos
+  }, 15000);
 });
+
 
 
 // Inicialización
@@ -238,11 +244,7 @@ app.post("/reset", async (req, res) => {
       message: "Reset completado. Abre /qr y escanea el nuevo QR."
     });
     
-    // ✅ Reinicio limpio del proceso (Railway lo relanza)
-    setTimeout(() => {
-      console.log("🔁 Reiniciando proceso tras reset...");
-      process.exit(0);
-    }, 1200);
+
   } catch (err) {
     console.error("❌ Error en /reset:", err);
     return res.status(500).json({ error: err.message || "Error reseteando sesión" });
