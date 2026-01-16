@@ -25,8 +25,7 @@ const client = new Client({
     headless: true,
   },
 
-  // ✅ Pin de versión de WhatsApp Web (workaround para el bug markedUnread / sendSeen)
-  // Si alguna vez vuelve a fallar, probaremos otra versión del repo wa-version.
+  // (Opcional) Pin de WhatsApp Web. Si quieres, lo quitamos más adelante.
   webVersionCache: {
     type: "remote",
     remotePath:
@@ -41,6 +40,55 @@ let lastState = "init";
 let lastDisconnectReason = null;
 let lastAuthFailure = null;
 
+// --------------------
+// ✅ PARCHE: evitar que sendSeen rompa el envío (markedUnread)
+// --------------------
+async function getPuppeteerPage() {
+  // whatsapp-web.js suele exponer pupPage / pupBrowser (interno, pero funciona)
+  if (client?.pupPage) return client.pupPage;
+
+  if (client?.pupBrowser) {
+    const pages = await client.pupBrowser.pages();
+    return pages?.[0] || null;
+  }
+
+  return null;
+}
+
+async function patchSendSeen() {
+  try {
+    const page = await getPuppeteerPage();
+    if (!page) {
+      console.warn("⚠️ No pude acceder a la página de Puppeteer para aplicar el parche.");
+      return;
+    }
+
+    await page.evaluate(() => {
+      // Evitar fallos si aún no está inyectado WWebJS
+      if (!window.WWebJS || typeof window.WWebJS.sendSeen !== "function") return;
+
+      // Evitar parchear dos veces
+      if (window.WWebJS.__sendSeenPatched) return;
+
+      const original = window.WWebJS.sendSeen;
+      window.WWebJS.sendSeen = async (...args) => {
+        try {
+          return await original(...args);
+        } catch (e) {
+          // Workaround: WhatsApp Web cambia internals y a veces rompe markedUnread
+          return true; // "ok" silencioso
+        }
+      };
+
+      window.WWebJS.__sendSeenPatched = true;
+    });
+
+    console.log("🩹 Parche aplicado: WWebJS.sendSeen protegido (markedUnread).");
+  } catch (e) {
+    console.warn("⚠️ No se pudo aplicar el parche sendSeen:", e?.message || e);
+  }
+}
+
 // --- Logs clave ---
 client.on("qr", async (qr) => {
   lastQR = qr;
@@ -53,10 +101,13 @@ client.on("authenticated", () => {
   lastAuthFailure = null;
 });
 
-client.on("ready", () => {
+client.on("ready", async () => {
   isReady = true;
   lastState = "ready";
   console.log("✅ READY - Cliente WhatsApp conectado y listo.");
+
+  // Aplicamos el parche al estar listo
+  await patchSendSeen();
 });
 
 client.on("change_state", (state) => {
@@ -184,12 +235,17 @@ app.post("/send", async (req, res) => {
     }
 
     console.log(`📩 Enviando mensaje a ${to}: ${message}`);
+
+    // Si por lo que sea el parche aún no estuviera aplicado, lo intentamos aplicar aquí también:
+    await patchSendSeen();
+
     let result;
     try {
       result = await client.sendMessage(to, message);
     } catch (e) {
       console.warn("⚠️ sendMessage falló, reintentando 1 vez:", e?.message || e);
       await new Promise((r) => setTimeout(r, 800));
+      await patchSendSeen();
       result = await client.sendMessage(to, message);
     }
 
@@ -315,5 +371,6 @@ app.post("/create-group", async (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
+
 
 
