@@ -99,14 +99,14 @@ client.on("qr", async (qr) => {
 client.on("authenticated", () => {
   console.log("🔐 AUTHENTICATED - QR aceptado.");
   lastAuthFailure = null;
+  lastQR = null; // ✅
 });
 
 client.on("ready", async () => {
   isReady = true;
   lastState = "ready";
+  lastQR = null; // ✅
   console.log("✅ READY - Cliente WhatsApp conectado y listo.");
-
-  // Aplicamos el parche al estar listo
   await patchSendSeen();
 });
 
