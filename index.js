@@ -1,6 +1,7 @@
 import express from "express";
 import pkg from "whatsapp-web.js";
 import qrcode from "qrcode";
+import fs from "fs/promises";
 
 const { Client, LocalAuth } = pkg;
 
@@ -19,26 +20,56 @@ const client = new Client({
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
+      // NOTA: evitamos "--single-process" por inestabilidades en algunos entornos
     ],
     headless: true,
   },
-  
+  // NOTA: NO fijamos webVersionCache para evitar roturas por versión obsoleta
 });
 
-// --- Estado del QR ---
+// --- Estado global ---
 let lastQR = null;
+let isReady = false;
+let lastState = "init";
+let lastDisconnectReason = null;
+let lastAuthFailure = null;
 
+// --- Logs clave ---
 client.on("qr", async (qr) => {
   lastQR = qr;
-  console.log("📱 Escanea este QR para vincular tu cuenta:");
+  isReady = false;
+  console.log("🧩 QR GENERATED - Abre /qr para escanear.");
 });
 
-client.on("ready", () =>
-  console.log("✅ Cliente WhatsApp conectado y listo en Railway")
-);
-client.on("auth_failure", (msg) => console.error("❌ Fallo de autenticación:", msg));
-client.on("disconnected", (reason) => console.warn("⚠️ Cliente desconectado:", reason));
+client.on("authenticated", () => {
+  console.log("🔐 AUTHENTICATED - QR aceptado.");
+  lastAuthFailure = null;
+});
 
+client.on("ready", () => {
+  isReady = true;
+  lastState = "ready";
+  console.log("✅ READY - Cliente WhatsApp conectado y listo.");
+});
+
+client.on("change_state", (state) => {
+  lastState = state;
+  console.log("🔄 STATE:", state);
+});
+
+client.on("auth_failure", (msg) => {
+  lastAuthFailure = String(msg || "");
+  isReady = false;
+  console.error("❌ AUTH FAILURE:", msg);
+});
+
+client.on("disconnected", (reason) => {
+  lastDisconnectReason = String(reason || "");
+  isReady = false;
+  console.warn("⚠️ DISCONNECTED:", reason);
+});
+
+// Inicialización
 client.initialize().catch((err) =>
   console.error("❌ Error al iniciar el cliente:", err)
 );
@@ -49,26 +80,75 @@ const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
 
-// Página principal
+// Público: salud
 app.get("/", (req, res) => res.send("✅ Servidor WhatsApp activo en Railway."));
 
-// QR visible desde navegador
+// Público: estado (útil para depurar)
+app.get("/status", (req, res) => {
+  res.json({
+    ready: isReady,
+    state: lastState,
+    hasQR: Boolean(lastQR),
+    lastDisconnectReason,
+    lastAuthFailure,
+    wid: client?.info?.wid?._serialized || null,
+  });
+});
+
+// Público: QR visible desde navegador
 app.get("/qr", async (req, res) => {
-  if (lastQR) {
-    const qrImage = await qrcode.toDataURL(lastQR);
-    res.send(`<img src="${qrImage}" style="width:300px;height:300px;" />`);
-  } else {
-    res.send("Esperando QR...");
+  try {
+    if (lastQR) {
+      const qrImage = await qrcode.toDataURL(lastQR);
+      return res.send(`<img src="${qrImage}" style="width:300px;height:300px;" />`);
+    }
+    return res.send("Esperando QR...");
+  } catch (e) {
+    return res.status(500).send("Error generando QR: " + e.message);
   }
 });
 
-// 🔐 Middleware de autenticación por API key
+// 🔐 Middleware de autenticación por API key (todo lo que viene debajo queda protegido)
 app.use((req, res, next) => {
   const apiKey = req.headers["x-api-key"];
   if (!apiKey || apiKey !== process.env.API_KEY) {
     return res.status(401).json({ error: "Acceso no autorizado: clave API inválida" });
   }
   next();
+});
+
+// ✅ Endpoint: reset total de credenciales + reinicio del cliente
+app.post("/reset", async (req, res) => {
+  try {
+    console.log("🧨 RESET solicitado: destruyendo cliente y borrando sesión...");
+
+    // 1) Apagar cliente
+    try {
+      await client.destroy();
+    } catch (e) {
+      console.warn("⚠️ destroy() falló o no era necesario:", e.message);
+    }
+
+    // 2) Borrar credenciales LocalAuth y cache
+    await fs.rm(".wwebjs_auth", { recursive: true, force: true });
+    await fs.rm(".wwebjs_cache", { recursive: true, force: true });
+
+    // 3) Reset variables
+    lastQR = null;
+    isReady = false;
+    lastState = "reset";
+    lastDisconnectReason = null;
+    lastAuthFailure = null;
+
+    // 4) Re-inicializar
+    await client.initialize();
+
+    console.log("♻️ RESET completado. Revisa /qr para escanear.");
+    return res.json({ status: "ok", message: "Reset completado. Abre /qr y escanea el nuevo QR." });
+  } catch (err) {
+    console.error("❌ Error en /reset:", err);
+    return res.status(500).json({ error: err.message || "Error reseteando sesión" });
+  }
 });
 
 // --- Endpoint principal /send ---
@@ -79,7 +159,7 @@ app.post("/send", async (req, res) => {
   }
 
   try {
-    // 🧩 Normalización estricta
+    // Normalización estricta
     if (!/@(c|g)\.us$/i.test(to)) {
       const clean = String(to).trim();
       const e164 = /^\+[1-9]\d{6,14}$/;
@@ -91,7 +171,7 @@ app.post("/send", async (req, res) => {
       to = `${clean.slice(1)}@c.us`;
     }
 
-    if (!client.info || !client.info.wid) {
+    if (!client.info || !client.info.wid || !isReady) {
       console.warn("⚠️ Cliente aún no está listo para enviar mensajes.");
       return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
     }
@@ -112,7 +192,16 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// --- NUEVO ENDPOINT: Buscar grupo por nombre ---
+// --- Util: normalizar números a WIDs ---
+function toWid(idLike) {
+  if (/@(c|g)\.us$/i.test(idLike)) return idLike.trim();
+  const clean = String(idLike || "").trim();
+  const e164 = /^\+[1-9]\d{6,14}$/;
+  if (!e164.test(clean)) throw new Error(`Número inválido (usa E.164): ${idLike}`);
+  return `${clean.slice(1)}@c.us`;
+}
+
+// --- Endpoint: buscar grupo por nombre ---
 app.post("/sync-group", async (req, res) => {
   const { groupName } = req.body;
 
@@ -121,7 +210,7 @@ app.post("/sync-group", async (req, res) => {
   }
 
   try {
-    if (!client.info || !client.info.wid) {
+    if (!client.info || !client.info.wid || !isReady) {
       return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
     }
 
@@ -149,19 +238,6 @@ app.post("/sync-group", async (req, res) => {
   }
 });
 
-// --- Util: normalizar números a WIDs ---
-function toWid(idLike) {
-  // ya viene como @c.us o @g.us -> lo dejamos tal cual
-  if (/@(c|g)\.us$/i.test(idLike)) return idLike.trim();
-  // E.164 +XXXXXXXX -> convertimos a 34...@c.us
-  const clean = String(idLike || "").trim();
-  const e164 = /^\+[1-9]\d{6,14}$/;
-  if (!e164.test(clean)) {
-    throw new Error(`Número inválido (usa E.164): ${idLike}`);
-  }
-  return `${clean.slice(1)}@c.us`;
-}
-
 // --- Endpoint: crear grupo ---
 app.post("/create-group", async (req, res) => {
   try {
@@ -174,12 +250,10 @@ app.post("/create-group", async (req, res) => {
       return res.status(400).json({ error: "Se requieren al menos 2 participantes" });
     }
 
-    // Cliente listo
-    if (!client || !client.info || !client.info.wid) {
+    if (!client.info || !client.info.wid || !isReady) {
       return res.status(503).json({ error: "Cliente WhatsApp aún no listo" });
     }
 
-    // Normalizar participantes a WID de WhatsApp
     let wids;
     try {
       wids = participants.map(toWid);
@@ -191,10 +265,8 @@ app.post("/create-group", async (req, res) => {
     console.log("   • Título:", groupTitle);
     console.log("   • Participantes:", wids.join(", "));
 
-    // Crear grupo
     const chat = await client.createGroup(groupTitle.trim(), wids);
 
-    // Algunas versiones devuelven obj distinto; cubrimos ambos casos
     const groupId =
       (chat && chat.gid && chat.gid._serialized) ||
       (chat && chat.id && chat.id._serialized) ||
@@ -205,7 +277,6 @@ app.post("/create-group", async (req, res) => {
 
     console.log(`✅ Grupo creado: ${groupName} → ${groupId}`);
 
-    // Mensaje inicial opcional
     if (initialMessage && groupId) {
       try {
         await client.sendMessage(groupId, String(initialMessage));
@@ -227,9 +298,8 @@ app.post("/create-group", async (req, res) => {
   }
 });
 
-
-
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WhatsApp escuchando en puerto ${PORT}`);
 });
+
 
