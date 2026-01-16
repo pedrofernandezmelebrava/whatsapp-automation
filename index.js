@@ -19,7 +19,6 @@ const client = new Client({
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
-      "--single-process"
     ],
     headless: true,
   },
