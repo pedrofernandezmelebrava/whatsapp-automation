@@ -125,7 +125,18 @@ client.on("disconnected", (reason) => {
   lastDisconnectReason = String(reason || "");
   isReady = false;
   console.warn("⚠️ DISCONNECTED:", reason);
+
+  // 🔁 Auto-reconnect suave (sin bucle agresivo)
+  setTimeout(async () => {
+    try {
+      console.log("🔁 Intentando re-inicializar tras desconexión...");
+      await client.initialize();
+    } catch (e) {
+      console.warn("⚠️ Re-initialize falló:", e?.message || e);
+    }
+  }, 15000); // 15 segundos
 });
+
 
 // Inicialización
 client.initialize().catch((err) =>
@@ -152,6 +163,26 @@ app.get("/status", (req, res) => {
     wid: client?.info?.wid?._serialized || null,
   });
 });
+
+app.get("/health", (req, res) => {
+  const ok =
+    isReady === true &&
+    lastState === "ready" &&
+    !lastAuthFailure &&
+    !lastDisconnectReason &&
+    client?.info?.wid?._serialized;
+
+  if (ok) return res.status(200).send("ok");
+  return res.status(503).json({
+    ok: false,
+    ready: isReady,
+    state: lastState,
+    lastDisconnectReason,
+    lastAuthFailure,
+    wid: client?.info?.wid?._serialized || null,
+  });
+});
+
 
 // Público: QR visible desde navegador
 app.get("/qr", async (req, res) => {
@@ -202,7 +233,16 @@ app.post("/reset", async (req, res) => {
     await client.initialize();
 
     console.log("♻️ RESET completado. Revisa /qr para escanear.");
-    return res.json({ status: "ok", message: "Reset completado. Abre /qr y escanea el nuevo QR." });
+    res.json({
+      status: "ok",
+      message: "Reset completado. Abre /qr y escanea el nuevo QR."
+    });
+    
+    // ✅ Reinicio limpio del proceso (Railway lo relanza)
+    setTimeout(() => {
+      console.log("🔁 Reiniciando proceso tras reset...");
+      process.exit(0);
+    }, 1200);
   } catch (err) {
     console.error("❌ Error en /reset:", err);
     return res.status(500).json({ error: err.message || "Error reseteando sesión" });
