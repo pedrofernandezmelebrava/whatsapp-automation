@@ -24,7 +24,14 @@ const client = new Client({
     ],
     headless: true,
   },
-  // NOTA: NO fijamos webVersionCache para evitar roturas por versión obsoleta
+
+  // ✅ Pin de versión de WhatsApp Web (workaround para el bug markedUnread / sendSeen)
+  // Si alguna vez vuelve a fallar, probaremos otra versión del repo wa-version.
+  webVersionCache: {
+    type: "remote",
+    remotePath:
+      "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2413.51-beta.html",
+  },
 });
 
 // --- Estado global ---
@@ -181,8 +188,6 @@ app.post("/send", async (req, res) => {
     try {
       result = await client.sendMessage(to, message);
     } catch (e) {
-      // Workaround: algunos builds de WhatsApp Web rompen sendSeen (markedUnread).
-      // Reintentamos una vez tras un pequeño delay.
       console.warn("⚠️ sendMessage falló, reintentando 1 vez:", e?.message || e);
       await new Promise((r) => setTimeout(r, 800));
       result = await client.sendMessage(to, message);
