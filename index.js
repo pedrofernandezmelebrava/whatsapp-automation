@@ -177,7 +177,16 @@ app.post("/send", async (req, res) => {
     }
 
     console.log(`📩 Enviando mensaje a ${to}: ${message}`);
-    const result = await client.sendMessage(to, message);
+    let result;
+    try {
+      result = await client.sendMessage(to, message);
+    } catch (e) {
+      // Workaround: algunos builds de WhatsApp Web rompen sendSeen (markedUnread).
+      // Reintentamos una vez tras un pequeño delay.
+      console.warn("⚠️ sendMessage falló, reintentando 1 vez:", e?.message || e);
+      await new Promise((r) => setTimeout(r, 800));
+      result = await client.sendMessage(to, message);
+    }
 
     console.log(`✅ Mensaje enviado correctamente a ${to}`);
     res.json({
