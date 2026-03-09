@@ -389,6 +389,25 @@ app.post("/create-group", async (req, res) => {
 
     console.log(`✅ Grupo creado: ${groupName} → ${groupId}`);
 
+    // ✅ NUEVO: permitir que todos puedan enviar mensajes
+    if (groupId) {
+      try {
+        // pequeña espera para dar tiempo a que WhatsApp termine de materializar el grupo
+        await new Promise((r) => setTimeout(r, 2000));
+
+        const groupChat = await client.getChatById(groupId);
+
+        if (groupChat && typeof groupChat.setMessagesAdminsOnly === "function") {
+          await groupChat.setMessagesAdminsOnly(false);
+          console.log("🟢 Configuración aplicada: todos los participantes pueden escribir.");
+        } else {
+          console.warn("⚠️ El chat del grupo no expone setMessagesAdminsOnly().");
+        }
+      } catch (e) {
+        console.warn("⚠️ No se pudo cambiar el ajuste de escritura del grupo:", e.message);
+      }
+    }
+
     if (initialMessage && groupId) {
       try {
         await client.sendMessage(groupId, String(initialMessage));
